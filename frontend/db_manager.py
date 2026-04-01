@@ -1,16 +1,25 @@
 """
 Database Manager — Oracle DB Connection Wrapper
 Online Food Management System
+Credentials loaded from .env file via python-dotenv
 """
 import oracledb
+import os
+from pathlib import Path
 
-# ─── CONFIGURATION ───────────────────────────────────────────────
-# Update these values to match your Oracle DB setup.
+# ─── Load .env ────────────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent / ".env")
+except ImportError:
+    pass  # dotenv optional — can also set env vars directly
+
 DB_CONFIG = {
-    "user": "system",
-    "password": "Shreyas123",
-    "dsn": "localhost:1521/XE"
+    "user":     os.environ.get("DB_USER",     "system"),
+    "password": os.environ.get("DB_PASSWORD", "Shreyas123"),
+    "dsn":      os.environ.get("DB_DSN",      "localhost:1521/XE"),
 }
+
 
 class DatabaseManager:
     """Singleton wrapper around an oracledb connection."""
@@ -29,7 +38,7 @@ class DatabaseManager:
                 password=DB_CONFIG["password"],
                 dsn=DB_CONFIG["dsn"]
             )
-            print("[DB] Connected to Oracle Database successfully!")
+            print(f"[DB] Connected to Oracle ({DB_CONFIG['dsn']}) successfully!")
             return True
         except oracledb.Error as e:
             print(f"[DB] Connection Error: {e}")
@@ -38,7 +47,7 @@ class DatabaseManager:
     def _ensure_connection(self):
         if not self.connection:
             if not self.connect():
-                raise ConnectionError("Cannot connect to Oracle Database")
+                raise ConnectionError("Cannot connect to Oracle Database. Check DB_USER/DB_PASSWORD/DB_DSN in .env")
 
     # ── Generic Queries ──────────────────────────────────────────
     def execute_query(self, query, params=None, fetch=True):
@@ -75,8 +84,7 @@ class DatabaseManager:
             cursor.close()
 
     def call_procedure_with_out(self, proc_name, in_params, out_type=float):
-        """Call a procedure that has one trailing OUT NUMBER parameter.
-        Returns the value of the OUT parameter."""
+        """Call a procedure that has one trailing OUT NUMBER parameter."""
         self._ensure_connection()
         cursor = self.connection.cursor()
         try:
