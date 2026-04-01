@@ -21,16 +21,20 @@ END;
 /
 
 -- 2. Place Order from Cart (moves cart items → order_details, clears cart)
+--    Total is computed INLINE to avoid ORA-04091 mutating table error in trigger.
 CREATE OR REPLACE PROCEDURE pr_Place_Order (
     p_customer_id IN NUMBER,
     p_restaurant_id IN NUMBER,
     p_out_order_id OUT NUMBER
 ) AS
+    v_total NUMBER(10,2) := 0;
 BEGIN
+    -- Create the order header (total starts at 0)
     INSERT INTO ORDERS (customer_id, restaurant_id, order_status, total_amount)
     VALUES (p_customer_id, p_restaurant_id, 'PENDING', 0)
     RETURNING order_id INTO p_out_order_id;
 
+    -- Move cart items → order details
     INSERT INTO ORDER_DETAILS (order_id, item_id, quantity, unit_price)
     SELECT p_out_order_id, c.item_id, c.quantity, m.price
     FROM CARTS c
@@ -38,6 +42,16 @@ BEGIN
     WHERE c.customer_id = p_customer_id
       AND m.restaurant_id = p_restaurant_id;
 
+    -- Compute total AFTER all rows are inserted (avoids mutating table)
+    SELECT NVL(SUM(quantity * unit_price), 0)
+    INTO v_total
+    FROM ORDER_DETAILS
+    WHERE order_id = p_out_order_id;
+
+    -- Update the order total directly
+    UPDATE ORDERS SET total_amount = v_total WHERE order_id = p_out_order_id;
+
+    -- Clear the cart
     DELETE FROM CARTS WHERE customer_id = p_customer_id;
 
     COMMIT;
