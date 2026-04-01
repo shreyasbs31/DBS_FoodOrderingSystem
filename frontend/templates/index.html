@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoodOS | Command Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #d9ff00; --bg: #0a0a0a; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: #fff; margin: 0; overflow: hidden; }
+        .df { font-family: 'Syncopate', sans-serif; text-transform: uppercase; }
+        .bb { border: 2px solid #fff; }
+        .ba { border: 2px solid var(--accent); }
+        .sa { box-shadow: 4px 4px 0 0 var(--accent); }
+        .sw { box-shadow: 6px 6px 0 0 #fff; }
+        .nav-link { transition: all .2s; border-left: 4px solid transparent; cursor: pointer; }
+        .nav-link:hover, .nav-link.active { background: rgba(217,255,0,.08); border-left-color: var(--accent); color: var(--accent); }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #111; } ::-webkit-scrollbar-thumb { background: #333; } ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+        .noise { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: .03; background-image: url('https://grainy-gradients.vercel.app/noise.svg'); z-index: 50; }
+        .view { display: none; } .view.active { display: block; }
+        .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px); z-index: 100; display: flex; align-items: center; justify-content: center; }
+        .toast { position: fixed; top: 20px; right: 20px; z-index: 200; padding: 12px 24px; font-size: 12px; font-weight: 700; animation: slideIn .3s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .metric-card { transition: all .2s; } .metric-card:hover { transform: translateY(-2px); }
+        input, select { outline: none; }
+        .btn-accent { background: var(--accent); color: #000; font-weight: 700; transition: all .15s; }
+        .btn-accent:hover { transform: translate(1px, 1px); box-shadow: none; }
+        table { border-collapse: collapse; }
+    </style>
+</head>
+<body>
+
+<!-- ─── LOGIN SCREEN ─────────────────────────────────────────── -->
+<div id="loginScreen" class="h-screen flex items-center justify-center">
+    <div class="w-[420px] p-10 bb bg-white/5 relative">
+        <div class="absolute -top-4 -left-4 w-8 h-8 bg-[#d9ff00]"></div>
+        <h1 class="df text-3xl font-bold tracking-tighter mb-1"><span class="text-[#d9ff00]">FOOD</span>OS</h1>
+        <p class="text-[10px] text-white/40 df tracking-widest mb-10">Online Food Management System</p>
+
+        <div id="loginForm">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Email / Username</label>
+            <input id="loginEmail" class="w-full bg-white/5 border-2 border-white/10 px-4 py-3 text-sm mb-4 focus:border-[#d9ff00] transition-colors" placeholder="Enter email...">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Password</label>
+            <input id="loginPassword" type="password" class="w-full bg-white/5 border-2 border-white/10 px-4 py-3 text-sm mb-6 focus:border-[#d9ff00] transition-colors" placeholder="Enter password...">
+            <div class="flex gap-3 mb-6">
+                <button onclick="doLogin('customer')" class="flex-1 btn-accent df text-[10px] tracking-widest py-3 sa">Customer Login</button>
+                <button onclick="doLogin('admin')" class="flex-1 bb bg-transparent text-white df text-[10px] tracking-widest py-3 hover:bg-white hover:text-black transition-colors">Admin Login</button>
+            </div>
+            <button onclick="showRegister()" class="text-[10px] df tracking-widest text-white/40 hover:text-[#d9ff00] transition-colors">→ New? Register Here</button>
+        </div>
+
+        <div id="registerForm" class="hidden">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Full Name</label>
+            <input id="regName" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-3 focus:border-[#d9ff00] transition-colors" placeholder="Your name">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Email</label>
+            <input id="regEmail" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-3 focus:border-[#d9ff00] transition-colors" placeholder="email@example.com">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Password</label>
+            <input id="regPassword" type="password" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-3 focus:border-[#d9ff00] transition-colors" placeholder="Password">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Phone</label>
+            <input id="regPhone" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-3 focus:border-[#d9ff00] transition-colors" placeholder="9876543210">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Address</label>
+            <input id="regAddress" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-5 focus:border-[#d9ff00] transition-colors" placeholder="Your address">
+            <button onclick="doRegister()" class="w-full btn-accent df text-[10px] tracking-widest py-3 sa mb-4">Register</button>
+            <button onclick="showLogin()" class="text-[10px] df tracking-widest text-white/40 hover:text-[#d9ff00] transition-colors">← Back to Login</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── MAIN DASHBOARD ───────────────────────────────────────── -->
+<div id="dashboard" class="hidden flex h-screen relative overflow-hidden">
+    <div class="noise"></div>
+
+    <!-- Sidebar -->
+    <aside class="w-72 border-r-2 border-white/10 flex flex-col z-10 shrink-0">
+        <div class="p-8">
+            <h1 class="df text-2xl font-bold tracking-tighter"><span class="text-[#d9ff00]">FOOD</span>OS</h1>
+            <p class="text-[10px] text-white/40 mt-1 df tracking-widest">Command Center v1.0</p>
+        </div>
+        <nav id="sidebarNav" class="flex-1 px-4 space-y-1 overflow-y-auto">
+            <!-- Populated by JS based on role -->
+        </nav>
+        <div class="p-6 border-t-2 border-white/10">
+            <div class="flex items-center gap-3 px-2">
+                <div class="w-10 h-10 bb rounded-full bg-[#d9ff00]/20 flex items-center justify-center df text-sm font-bold text-[#d9ff00]" id="userAvatar">?</div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold truncate" id="userName">User</p>
+                    <p class="text-[10px] text-white/40" id="userRole">Role</p>
+                </div>
+                <button onclick="doLogout()" class="text-white/40 hover:text-[#d9ff00] transition-colors" title="Logout">
+                    <iconify-icon icon="lucide:log-out" class="text-lg"></iconify-icon>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 overflow-y-auto z-10 flex flex-col">
+        <header class="h-20 border-b-2 border-white/10 flex items-center justify-between px-10 sticky top-0 bg-[#0a0a0a]/80 backdrop-filter backdrop-blur-md z-20 shrink-0">
+            <h2 class="df text-lg font-bold tracking-tight" id="pageTitle">Dashboard</h2>
+            <div class="flex items-center gap-4">
+                <div class="relative group">
+                    <input type="text" placeholder="SEARCH..." class="bg-white/5 border-2 border-white/10 px-4 py-2 text-xs df focus:border-[#d9ff00] transition-all w-56">
+                    <iconify-icon icon="lucide:search" class="absolute right-3 top-1/2 -translate-y-1/2 text-white/30"></iconify-icon>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex-1 p-10 space-y-8" id="mainContent">
+            <!-- Views injected here by JS -->
+
+            <!-- ─── DASHBOARD VIEW ──────────────────────────── -->
+            <div id="view-dashboard" class="view active">
+                <div class="grid grid-cols-4 gap-6 mb-10" id="statsGrid">
+                    <!-- Stats cards filled by JS -->
+                </div>
+                <div class="grid grid-cols-12 gap-8">
+                    <div class="col-span-8 bg-white/5 bb p-8">
+                        <div class="flex items-center justify-between mb-6">
+                            <h4 class="df text-sm font-bold tracking-widest">Recent Orders</h4>
+                        </div>
+                        <div id="dashRecentOrders" class="overflow-x-auto"></div>
+                    </div>
+                    <div class="col-span-4 space-y-4">
+                        <h4 class="df text-sm font-bold tracking-widest">Quick Actions</h4>
+                        <div id="quickActions" class="space-y-4"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── RESTAURANTS VIEW ────────────────────────── -->
+            <div id="view-restaurants" class="view">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="df text-sm tracking-widest font-bold">All Restaurants</h3>
+                    <button id="btnAddRestaurant" class="hidden btn-accent df text-[10px] tracking-widest px-6 py-2.5 sa" onclick="showAddRestaurantModal()">+ Add Restaurant</button>
+                </div>
+                <div id="restaurantGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            </div>
+
+            <!-- ─── MENU VIEW ───────────────────────────────── -->
+            <div id="view-menu" class="view">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="df text-sm tracking-widest font-bold">Menu — <span id="menuResName"></span></h3>
+                    <div class="flex gap-3">
+                        <button onclick="navigate('restaurants')" class="bb bg-transparent text-white df text-[10px] tracking-widest px-4 py-2 hover:bg-white hover:text-black transition-colors">← Back</button>
+                        <button id="btnAddMenuItem" class="hidden btn-accent df text-[10px] tracking-widest px-4 py-2 sa" onclick="showAddMenuItemModal()">+ Add Item</button>
+                    </div>
+                </div>
+                <div id="menuGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            </div>
+
+            <!-- ─── CART VIEW ───────────────────────────────── -->
+            <div id="view-cart" class="view">
+                <h3 class="df text-sm tracking-widest font-bold mb-6">Your Cart</h3>
+                <div id="cartContent"></div>
+            </div>
+
+            <!-- ─── ORDERS VIEW ─────────────────────────────── -->
+            <div id="view-orders" class="view">
+                <h3 class="df text-sm tracking-widest font-bold mb-6">Order History</h3>
+                <div id="ordersTable" class="overflow-x-auto"></div>
+            </div>
+
+            <!-- ─── DELIVERY VIEW ───────────────────────────── -->
+            <div id="view-delivery" class="view">
+                <h3 class="df text-sm tracking-widest font-bold mb-6">Delivery Management</h3>
+                <div id="deliveryContent"></div>
+            </div>
+
+        </div>
+
+        <footer class="p-4 border-t-2 border-white/10 flex justify-between text-[10px] text-white/30 df shrink-0">
+            <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-[#d9ff00] animate-pulse"></span> SYSTEM: ONLINE</span>
+            <span>© FOODOS DBS PROJECT 2026</span>
+        </footer>
+    </main>
+</div>
+
+<!-- ─── MODAL CONTAINER ──────────────────────────────────────── -->
+<div id="modalContainer" class="hidden"></div>
+
+<!-- ─── TOAST CONTAINER ──────────────────────────────────────── -->
+<div id="toastContainer"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let currentUser = null;
+let currentView = 'dashboard';
+let selectedRestaurantId = null;
+let selectedRestaurantName = '';
+
+// ═══════════════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════════════
+async function api(url, opts = {}) {
+    const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+        body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    return res.json();
+}
+
+function toast(msg, type = 'success') {
+    const el = document.createElement('div');
+    el.className = `toast df tracking-widest ${type === 'success' ? 'bg-[#d9ff00] text-black' : 'bg-red-500 text-white'}`;
+    el.textContent = msg;
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+}
+
+function closeModal() {
+    document.getElementById('modalContainer').classList.add('hidden');
+    document.getElementById('modalContainer').innerHTML = '';
+}
+
+function openModal(html) {
+    const c = document.getElementById('modalContainer');
+    c.innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="bg-[#0a0a0a] bb p-8 w-[460px] max-h-[80vh] overflow-y-auto relative">${html}</div></div>`;
+    c.classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════════
+function showRegister() { document.getElementById('loginForm').classList.add('hidden'); document.getElementById('registerForm').classList.remove('hidden'); }
+function showLogin() { document.getElementById('registerForm').classList.add('hidden'); document.getElementById('loginForm').classList.remove('hidden'); }
+
+async function doLogin(role) {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    if (!email || !password) return toast('Fill in all fields', 'error');
+    const data = await api('/api/login', { method: 'POST', body: { email, password, role } });
+    if (data.ok) {
+        currentUser = data.user;
+        enterDashboard();
+    } else {
+        toast(data.error || 'Login failed', 'error');
+    }
+}
+
+async function doRegister() {
+    const fields = { name: 'regName', email: 'regEmail', password: 'regPassword', phone: 'regPhone', address: 'regAddress' };
+    const body = {};
+    for (const [k, id] of Object.entries(fields)) {
+        body[k] = document.getElementById(id).value;
+        if (!body[k]) return toast('Fill in all fields', 'error');
+    }
+    const data = await api('/api/register', { method: 'POST', body });
+    if (data.ok) { toast('Registered! Please login.'); showLogin(); }
+    else toast(data.error || 'Registration failed', 'error');
+}
+
+async function doLogout() {
+    await api('/api/logout', { method: 'POST' });
+    currentUser = null;
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DASHBOARD ENTRY
+// ═══════════════════════════════════════════════════════════════
+function enterDashboard() {
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+    document.getElementById('dashboard').classList.add('flex');
+
+    const name = currentUser.NAME || currentUser.USERNAME || 'Admin';
+    document.getElementById('userName').textContent = name;
+    document.getElementById('userRole').textContent = currentUser.role === 'admin' ? 'Administrator' : 'Customer';
+    document.getElementById('userAvatar').textContent = name.charAt(0).toUpperCase();
+
+    buildSidebar();
+    navigate('dashboard');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIDEBAR
+// ═══════════════════════════════════════════════════════════════
+function buildSidebar() {
+    const isAdmin = currentUser.role === 'admin';
+    const links = [
+        { id: 'dashboard', icon: 'lucide:layout-dashboard', label: 'Dashboard' },
+        { id: 'restaurants', icon: 'lucide:utensils', label: 'Restaurants' },
+    ];
+    if (!isAdmin) {
+        links.push({ id: 'cart', icon: 'lucide:shopping-cart', label: 'My Cart' });
+    }
+    links.push({ id: 'orders', icon: 'lucide:clipboard-list', label: 'Orders' });
+    if (isAdmin) {
+        links.push({ id: 'delivery', icon: 'lucide:truck', label: 'Deliveries' });
+    }
+
+    document.getElementById('sidebarNav').innerHTML = links.map(l => `
+        <a class="nav-link flex items-center gap-4 px-4 py-3 ${l.id === currentView ? 'active' : ''}" onclick="navigate('${l.id}')">
+            <iconify-icon icon="${l.icon}" class="text-xl"></iconify-icon>
+            <span class="df text-[10px] tracking-widest font-bold">${l.label}</span>
+        </a>
+    `).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+function navigate(view) {
+    currentView = view;
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const el = document.getElementById('view-' + view);
+    if (el) el.classList.add('active');
+
+    // Update sidebar active
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    document.querySelector(`.nav-link[onclick*="'${view}'"]`)?.classList.add('active');
+
+    const titles = { dashboard: 'Dashboard Overview', restaurants: 'Restaurant Directory', menu: 'Menu Explorer', cart: 'Shopping Cart', orders: 'Order Management', delivery: 'Delivery Hub' };
+    document.getElementById('pageTitle').textContent = titles[view] || 'Dashboard';
+
+    // Show/hide admin buttons
+    const isAdmin = currentUser.role === 'admin';
+    document.getElementById('btnAddRestaurant')?.classList.toggle('hidden', !isAdmin);
+    document.getElementById('btnAddMenuItem')?.classList.toggle('hidden', !isAdmin);
+
+    // Load data
+    if (view === 'dashboard') loadDashboard();
+    else if (view === 'restaurants') loadRestaurants();
+    else if (view === 'cart') loadCart();
+    else if (view === 'orders') loadOrders();
+    else if (view === 'delivery') loadDeliveries();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DASHBOARD VIEW
+// ═══════════════════════════════════════════════════════════════
+async function loadDashboard() {
+    const stats = await api('/api/stats');
+    const metrics = [
+        { label: 'Total Revenue', value: `₹${Number(stats.total_revenue).toLocaleString()}`, icon: 'lucide:trending-up', color: 'text-[#d9ff00]' },
+        { label: 'Total Orders', value: stats.total_orders, icon: 'lucide:clipboard-list', color: 'text-blue-400' },
+        { label: 'Customers', value: stats.total_customers, icon: 'lucide:users', color: 'text-purple-400' },
+        { label: 'Pending Orders', value: stats.pending_orders, icon: 'lucide:clock', color: 'text-yellow-400' },
+    ];
+    document.getElementById('statsGrid').innerHTML = metrics.map(m => `
+        <div class="bg-white/5 p-6 bb relative group overflow-hidden metric-card">
+            <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                <iconify-icon icon="${m.icon}" class="text-8xl ${m.color}"></iconify-icon>
+            </div>
+            <p class="df text-[10px] tracking-widest text-white/50 mb-2">${m.label}</p>
+            <h3 class="text-4xl font-black tabular-nums">${m.value}</h3>
+        </div>
+    `).join('');
+
+    // Recent orders
+    const orders = await api('/api/orders');
+    const recent = (orders || []).slice(0, 5);
+    document.getElementById('dashRecentOrders').innerHTML = recent.length ? `
+        <table class="w-full text-left text-xs">
+            <thead><tr class="border-b border-white/10 text-white/40 df tracking-widest text-[10px]">
+                <th class="px-4 py-3">ID</th><th class="px-4 py-3">${currentUser.role==='admin'?'Customer':'Restaurant'}</th><th class="px-4 py-3">Amount</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Date</th>
+            </tr></thead>
+            <tbody class="divide-y divide-white/5">${recent.map(o => `
+                <tr class="hover:bg-white/5 transition-colors">
+                    <td class="px-4 py-3 font-bold">#${o.ORDER_ID}</td>
+                    <td class="px-4 py-3">${o.CUSTOMER_NAME || o.RESTAURANT_NAME}</td>
+                    <td class="px-4 py-3 font-bold">₹${o.TOTAL_AMOUNT}</td>
+                    <td class="px-4 py-3">${statusBadge(o.ORDER_STATUS)}</td>
+                    <td class="px-4 py-3 text-white/40">${o.ORDER_TIME}</td>
+                </tr>
+            `).join('')}</tbody>
+        </table>
+    ` : '<p class="text-white/30 text-sm">No orders yet.</p>';
+
+    // Quick actions
+    const isAdmin = currentUser.role === 'admin';
+    const actions = isAdmin ? [
+        { label: 'Manage Restaurants', desc: 'Add, edit, or remove listings', icon: 'lucide:utensils', onclick: "navigate('restaurants')" },
+        { label: 'View All Orders', desc: 'Track and update order statuses', icon: 'lucide:clipboard-list', onclick: "navigate('orders')" },
+        { label: 'Delivery Hub', desc: 'Assign agents and track progress', icon: 'lucide:truck', onclick: "navigate('delivery')" },
+    ] : [
+        { label: 'Browse Restaurants', desc: 'Discover and explore menus', icon: 'lucide:utensils', onclick: "navigate('restaurants')" },
+        { label: 'View Cart', desc: 'Review items before ordering', icon: 'lucide:shopping-cart', onclick: "navigate('cart')" },
+        { label: 'Order History', desc: 'Track your past and active orders', icon: 'lucide:clipboard-list', onclick: "navigate('orders')" },
+    ];
+    document.getElementById('quickActions').innerHTML = actions.map((a, i) => `
+        <button onclick="${a.onclick}" class="w-full text-left ${i===0?'bg-white text-black sa':'bg-black text-white bb hover:bg-[#d9ff00] hover:text-black'} p-4 transition-all group ${i===0?'hover:-translate-x-1 hover:-translate-y-1':''}">
+            <div class="flex items-center justify-between">
+                <span class="df text-xs font-bold">${a.label}</span>
+                <iconify-icon icon="${a.icon}" class="text-xl"></iconify-icon>
+            </div>
+            <p class="text-[10px] mt-1 opacity-60 font-medium">${a.desc}</p>
+        </button>
+    `).join('');
+}
+
+function statusBadge(s) {
+    const colors = { PENDING: 'bg-yellow-500/20 text-yellow-400', CONFIRMED: 'bg-blue-500/20 text-blue-400', OUT_FOR_DELIVERY: 'bg-purple-500/20 text-purple-400', DELIVERED: 'bg-green-500/20 text-green-400', CANCELLED: 'bg-red-500/20 text-red-400' };
+    return `<span class="px-2 py-0.5 ${colors[s]||'bg-white/10 text-white/50'} text-[10px] font-bold df tracking-tighter">${s}</span>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RESTAURANTS VIEW
+// ═══════════════════════════════════════════════════════════════
+async function loadRestaurants() {
+    const rows = await api('/api/restaurants');
+    const isAdmin = currentUser.role === 'admin';
+    document.getElementById('restaurantGrid').innerHTML = (rows||[]).map(r => `
+        <div class="bg-white/5 bb p-6 group hover:border-[#d9ff00] transition-colors cursor-pointer relative" onclick="openMenu(${r.RESTAURANT_ID}, '${r.NAME.replace(/'/g,"\\'")}')">
+            <div class="absolute top-4 right-4 bg-[#d9ff00]/10 text-[#d9ff00] px-2 py-0.5 text-[10px] df font-bold tracking-widest">★ ${r.RATING}</div>
+            <iconify-icon icon="lucide:utensils" class="text-3xl text-white/20 group-hover:text-[#d9ff00] transition-colors mb-4"></iconify-icon>
+            <h4 class="df text-sm font-bold tracking-wide mb-1">${r.NAME}</h4>
+            <p class="text-xs text-white/40">${r.LOCATION}</p>
+            ${isAdmin ? `<button onclick="event.stopPropagation();deleteRestaurant(${r.RESTAURANT_ID})" class="mt-4 text-[10px] df tracking-widest text-red-400 hover:text-red-300">Delete</button>` : ''}
+        </div>
+    `).join('') || '<p class="text-white/30">No restaurants found.</p>';
+}
+
+function showAddRestaurantModal() {
+    openModal(`
+        <h3 class="df text-sm font-bold tracking-widest mb-6">Add Restaurant</h3>
+        <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Name</label>
+        <input id="arName" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-3 focus:border-[#d9ff00] transition-colors">
+        <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Location</label>
+        <input id="arLocation" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-3 focus:border-[#d9ff00] transition-colors">
+        <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Rating (0-5)</label>
+        <input id="arRating" type="number" min="0" max="5" step="0.1" value="0" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-5 focus:border-[#d9ff00] transition-colors">
+        <button onclick="submitAddRestaurant()" class="w-full btn-accent df text-[10px] tracking-widest py-3 sa">Create</button>
+    `);
+}
+
+async function submitAddRestaurant() {
+    const body = { name: document.getElementById('arName').value, location: document.getElementById('arLocation').value, rating: parseFloat(document.getElementById('arRating').value) || 0 };
+    if (!body.name || !body.location) return toast('Fill in all fields', 'error');
+    const d = await api('/api/restaurants', { method: 'POST', body });
+    if (d.ok) { closeModal(); toast('Restaurant added!'); loadRestaurants(); } else toast(d.error, 'error');
+}
+
+async function deleteRestaurant(id) {
+    if (!confirm('Delete this restaurant?')) return;
+    await api(`/api/restaurants/${id}`, { method: 'DELETE' });
+    toast('Deleted'); loadRestaurants();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MENU VIEW
+// ═══════════════════════════════════════════════════════════════
+async function openMenu(rid, rname) {
+    selectedRestaurantId = rid;
+    selectedRestaurantName = rname;
+    document.getElementById('menuResName').textContent = rname;
+    navigate('menu');
+    loadMenu();
+}
+
+async function loadMenu() {
+    const rows = await api(`/api/menu/${selectedRestaurantId}`);
+    const isAdmin = currentUser.role === 'admin';
+    const isCustomer = currentUser.role === 'customer';
+    document.getElementById('menuGrid').innerHTML = (rows||[]).map(item => `
+        <div class="bg-white/5 bb p-5 group hover:border-[#d9ff00] transition-colors relative">
+            <span class="text-[10px] df tracking-widest text-white/30">${item.CATEGORY_NAME}</span>
+            <h4 class="text-sm font-bold mt-1 mb-2">${item.ITEM_NAME}</h4>
+            <p class="text-xl font-black text-[#d9ff00]">₹${item.PRICE}</p>
+            <div class="mt-4 flex gap-2">
+                ${isCustomer ? `<button onclick="addToCart(${item.ITEM_ID})" class="btn-accent df text-[10px] tracking-widest px-4 py-1.5 sa">+ Cart</button>` : ''}
+                ${isAdmin ? `<button onclick="deleteMenuItem(${item.ITEM_ID})" class="text-[10px] df tracking-widest text-red-400 hover:text-red-300 px-4 py-1.5 bb border-red-400/30">Delete</button>` : ''}
+            </div>
+        </div>
+    `).join('') || '<p class="text-white/30">No items on this menu yet.</p>';
+}
+
+function showAddMenuItemModal() {
+    // Load categories first
+    api('/api/categories').then(cats => {
+        const opts = (cats||[]).map(c => `<option value="${c.CATEGORY_ID}">${c.CATEGORY_NAME}</option>`).join('');
+        openModal(`
+            <h3 class="df text-sm font-bold tracking-widest mb-6">Add Menu Item</h3>
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Item Name</label>
+            <input id="miName" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-3 focus:border-[#d9ff00] transition-colors">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Price (₹)</label>
+            <input id="miPrice" type="number" min="0" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-3 focus:border-[#d9ff00] transition-colors">
+            <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Category</label>
+            <select id="miCategory" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-5 focus:border-[#d9ff00] transition-colors text-white">${opts}</select>
+            <button onclick="submitAddMenuItem()" class="w-full btn-accent df text-[10px] tracking-widest py-3 sa">Add Item</button>
+        `);
+    });
+}
+
+async function submitAddMenuItem() {
+    const body = { item_name: document.getElementById('miName').value, price: parseFloat(document.getElementById('miPrice').value), category_id: parseInt(document.getElementById('miCategory').value), restaurant_id: selectedRestaurantId };
+    if (!body.item_name || !body.price) return toast('Fill all fields', 'error');
+    const d = await api('/api/menu', { method: 'POST', body });
+    if (d.ok) { closeModal(); toast('Item added!'); loadMenu(); } else toast(d.error, 'error');
+}
+
+async function deleteMenuItem(id) {
+    if (!confirm('Delete this item?')) return;
+    await api(`/api/menu/${id}`, { method: 'DELETE' });
+    toast('Item deleted'); loadMenu();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CART VIEW
+// ═══════════════════════════════════════════════════════════════
+async function addToCart(itemId) {
+    const d = await api('/api/cart', { method: 'POST', body: { item_id: itemId } });
+    if (d.ok) toast('Added to cart!'); else toast('Failed', 'error');
+}
+
+async function loadCart() {
+    const rows = await api('/api/cart');
+    if (!rows || !rows.length) {
+        document.getElementById('cartContent').innerHTML = `
+            <div class="text-center py-20">
+                <iconify-icon icon="lucide:shopping-cart" class="text-6xl text-white/10 mb-4"></iconify-icon>
+                <p class="text-white/30 df text-xs tracking-widest">Your cart is empty</p>
+                <button onclick="navigate('restaurants')" class="mt-4 btn-accent df text-[10px] tracking-widest px-6 py-2 sa">Browse Restaurants</button>
+            </div>`;
+        return;
+    }
+    const total = rows.reduce((s, r) => s + r.SUBTOTAL, 0);
+    const rid = rows[0].RESTAURANT_ID;
+    document.getElementById('cartContent').innerHTML = `
+        <div class="bg-white/5 bb overflow-hidden">
+            <table class="w-full text-left text-xs">
+                <thead><tr class="border-b border-white/10 text-white/40 df tracking-widest text-[10px]">
+                    <th class="px-6 py-4">Item</th><th class="px-6 py-4">Qty</th><th class="px-6 py-4">Price</th><th class="px-6 py-4">Subtotal</th><th class="px-6 py-4"></th>
+                </tr></thead>
+                <tbody class="divide-y divide-white/5">${rows.map(r => `
+                    <tr class="hover:bg-white/5 transition-colors">
+                        <td class="px-6 py-4 font-bold">${r.ITEM_NAME}</td>
+                        <td class="px-6 py-4">${r.QUANTITY}</td>
+                        <td class="px-6 py-4">₹${r.PRICE}</td>
+                        <td class="px-6 py-4 font-bold text-[#d9ff00]">₹${r.SUBTOTAL}</td>
+                        <td class="px-6 py-4"><button onclick="removeFromCart(${r.ITEM_ID})" class="text-red-400 hover:text-red-300"><iconify-icon icon="lucide:x"></iconify-icon></button></td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>
+            <div class="p-6 border-t-2 border-white/10 flex items-center justify-between">
+                <div>
+                    <span class="text-white/40 text-xs df tracking-widest">Grand Total</span>
+                    <p class="text-3xl font-black text-[#d9ff00]">₹${total.toLocaleString()}</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="clearCart()" class="bb bg-transparent text-white df text-[10px] tracking-widest px-6 py-3 hover:bg-white hover:text-black transition-colors">Clear Cart</button>
+                    <button onclick="placeOrder(${rid})" class="btn-accent df text-[10px] tracking-widest px-8 py-3 sa">Place Order</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function removeFromCart(itemId) {
+    await api(`/api/cart/${itemId}`, { method: 'DELETE' });
+    loadCart();
+}
+
+async function clearCart() {
+    await api('/api/cart/clear', { method: 'DELETE' });
+    toast('Cart cleared'); loadCart();
+}
+
+async function placeOrder(rid) {
+    const d = await api('/api/orders', { method: 'POST', body: { restaurant_id: rid } });
+    if (d.ok) {
+        toast(`Order #${Math.round(d.order_id)} placed!`);
+        showPaymentModal(Math.round(d.order_id));
+        loadCart();
+    } else toast(d.error || 'Order failed', 'error');
+}
+
+function showPaymentModal(orderId) {
+    openModal(`
+        <h3 class="df text-sm font-bold tracking-widest mb-6">Process Payment — Order #${orderId}</h3>
+        <label class="text-[10px] df tracking-widest text-white/50 block mb-1">Payment Method</label>
+        <select id="payMethod" class="w-full bg-white/5 border-2 border-white/10 px-4 py-2.5 text-sm mb-5 focus:border-[#d9ff00] transition-colors text-white">
+            <option value="UPI">UPI</option>
+            <option value="CREDIT_CARD">Credit Card</option>
+            <option value="CASH">Cash on Delivery</option>
+        </select>
+        <button onclick="submitPayment(${orderId})" class="w-full btn-accent df text-[10px] tracking-widest py-3 sa">Pay Now</button>
+    `);
+}
+
+async function submitPayment(orderId) {
+    const method = document.getElementById('payMethod').value;
+    const d = await api('/api/payments', { method: 'POST', body: { order_id: orderId, method } });
+    if (d.ok) { closeModal(); toast('Payment successful!'); } else toast(d.error, 'error');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ORDERS VIEW
+// ═══════════════════════════════════════════════════════════════
+async function loadOrders() {
+    const rows = await api('/api/orders');
+    const isAdmin = currentUser.role === 'admin';
+    document.getElementById('ordersTable').innerHTML = (rows && rows.length) ? `
+        <div class="bg-white/5 bb overflow-hidden">
+            <table class="w-full text-left text-xs">
+                <thead><tr class="border-b border-white/10 text-white/40 df tracking-widest text-[10px]">
+                    <th class="px-6 py-4">Order ID</th>
+                    ${isAdmin ? '<th class="px-6 py-4">Customer</th>' : ''}
+                    <th class="px-6 py-4">Restaurant</th><th class="px-6 py-4">Amount</th><th class="px-6 py-4">Status</th><th class="px-6 py-4">Date</th>
+                    ${isAdmin ? '<th class="px-6 py-4">Actions</th>' : ''}
+                </tr></thead>
+                <tbody class="divide-y divide-white/5">${rows.map(o => `
+                    <tr class="hover:bg-white/5 transition-colors">
+                        <td class="px-6 py-4 font-bold">#${o.ORDER_ID}</td>
+                        ${isAdmin ? `<td class="px-6 py-4">${o.CUSTOMER_NAME}</td>` : ''}
+                        <td class="px-6 py-4">${o.RESTAURANT_NAME}</td>
+                        <td class="px-6 py-4 font-bold">₹${o.TOTAL_AMOUNT}</td>
+                        <td class="px-6 py-4">${statusBadge(o.ORDER_STATUS)}</td>
+                        <td class="px-6 py-4 text-white/40">${o.ORDER_TIME}</td>
+                        ${isAdmin ? `<td class="px-6 py-4">
+                            ${o.ORDER_STATUS === 'PENDING' ? `<button onclick="confirmOrder(${o.ORDER_ID})" class="text-[10px] df tracking-widest text-[#d9ff00] hover:underline">Confirm</button>` : ''}
+                            ${o.ORDER_STATUS === 'CONFIRMED' ? `<button onclick="assignDelivery(${o.ORDER_ID})" class="text-[10px] df tracking-widest text-blue-400 hover:underline">Assign Agent</button>` : ''}
+                        </td>` : ''}
+                    </tr>
+                `).join('')}</tbody>
+            </table>
+        </div>
+    ` : '<p class="text-white/30 text-sm">No orders found.</p>';
+}
+
+async function confirmOrder(oid) {
+    await api(`/api/orders/${oid}/status`, { method: 'PUT', body: { status: 'CONFIRMED' } });
+    toast('Order confirmed'); loadOrders();
+}
+
+async function assignDelivery(oid) {
+    const d = await api('/api/deliveries/assign', { method: 'POST', body: { order_id: oid } });
+    if (d.ok) { toast('Agent assigned!'); loadOrders(); } else toast(d.error || 'No agents available', 'error');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DELIVERY VIEW (Admin)
+// ═══════════════════════════════════════════════════════════════
+async function loadDeliveries() {
+    const [deliveries, agents] = await Promise.all([api('/api/deliveries'), api('/api/agents')]);
+    document.getElementById('deliveryContent').innerHTML = `
+        <div class="grid grid-cols-2 gap-8">
+            <div class="bg-white/5 bb overflow-hidden">
+                <div class="p-6 border-b border-white/10"><h4 class="df text-xs tracking-widest font-bold">Active Deliveries</h4></div>
+                ${(deliveries && deliveries.length) ? `<table class="w-full text-left text-xs">
+                    <thead><tr class="border-b border-white/10 text-white/40 df tracking-widest text-[10px]"><th class="px-4 py-3">ID</th><th class="px-4 py-3">Order</th><th class="px-4 py-3">Agent</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Action</th></tr></thead>
+                    <tbody class="divide-y divide-white/5">${deliveries.map(d => `
+                        <tr class="hover:bg-white/5 transition-colors">
+                            <td class="px-4 py-3">#${d.DELIVERY_ID}</td>
+                            <td class="px-4 py-3">#${d.ORDER_ID}</td>
+                            <td class="px-4 py-3">${d.AGENT_NAME}</td>
+                            <td class="px-4 py-3">${statusBadge(d.DELIVERY_STATUS)}</td>
+                            <td class="px-4 py-3">
+                                ${d.DELIVERY_STATUS === 'ASSIGNED' ? `<button onclick="updateDelivery(${d.DELIVERY_ID},'OUT_FOR_DELIVERY')" class="text-[10px] df text-blue-400 hover:underline">Dispatch</button>` : ''}
+                                ${d.DELIVERY_STATUS === 'OUT_FOR_DELIVERY' ? `<button onclick="updateDelivery(${d.DELIVERY_ID},'DELIVERED')" class="text-[10px] df text-green-400 hover:underline">Complete</button>` : ''}
+                            </td>
+                        </tr>
+                    `).join('')}</tbody>
+                </table>` : '<p class="p-6 text-white/30 text-sm">No active deliveries.</p>'}
+            </div>
+            <div class="bg-white/5 bb p-6">
+                <h4 class="df text-xs tracking-widest font-bold mb-4">Agent Roster</h4>
+                <div class="space-y-3">${(agents||[]).map(a => `
+                    <div class="flex items-center justify-between p-3 bb border-white/10">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full ${a.IS_AVAILABLE==='Y'?'bg-green-500/20':'bg-red-500/20'} flex items-center justify-center text-[10px] font-bold ${a.IS_AVAILABLE==='Y'?'text-green-400':'text-red-400'}">${a.AGENT_NAME.charAt(0)}</div>
+                            <div>
+                                <p class="text-sm font-bold">${a.AGENT_NAME}</p>
+                                <p class="text-[10px] text-white/40">${a.PHONE}</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] df tracking-widest ${a.IS_AVAILABLE==='Y'?'text-green-400':'text-red-400'}">${a.IS_AVAILABLE==='Y'?'Available':'On Delivery'}</span>
+                    </div>
+                `).join('')}</div>
+            </div>
+        </div>
+    `;
+}
+
+async function updateDelivery(did, status) {
+    const d = await api(`/api/deliveries/${did}/status`, { method: 'PUT', body: { status } });
+    if (d.ok) { toast('Delivery updated!'); loadDeliveries(); } else toast(d.error, 'error');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT — check for existing session
+// ═══════════════════════════════════════════════════════════════
+(async () => {
+    const s = await api('/api/session');
+    if (s.ok) { currentUser = s.user; enterDashboard(); }
+})();
+</script>
+</body>
+</html>
