@@ -103,8 +103,29 @@ def add_restaurant():
 @app.route("/api/restaurants/<int:rid>", methods=["DELETE"])
 @login_required
 def delete_restaurant(rid):
-    db.execute_query("DELETE FROM RESTAURANTS WHERE restaurant_id = :id", {"id": rid}, fetch=False)
-    return jsonify({"ok": True})
+    try:
+        # Must delete in FK dependency order to avoid ORA-02292
+        db.execute_query("""
+            DELETE FROM REVIEWS WHERE order_id IN
+                (SELECT order_id FROM ORDERS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
+        db.execute_query("""
+            DELETE FROM DELIVERIES WHERE order_id IN
+                (SELECT order_id FROM ORDERS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
+        db.execute_query("""
+            DELETE FROM PAYMENTS WHERE order_id IN
+                (SELECT order_id FROM ORDERS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
+        db.execute_query("""
+            DELETE FROM ORDER_DETAILS WHERE order_id IN
+                (SELECT order_id FROM ORDERS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
+        db.execute_query("DELETE FROM ORDERS WHERE restaurant_id = :rid", {"rid": rid}, fetch=False)
+        db.execute_query("""
+            DELETE FROM CARTS WHERE item_id IN
+                (SELECT item_id FROM MENU_ITEMS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
+        db.execute_query("DELETE FROM MENU_ITEMS WHERE restaurant_id = :rid", {"rid": rid}, fetch=False)
+        db.execute_query("DELETE FROM RESTAURANTS WHERE restaurant_id = :rid", {"rid": rid}, fetch=False)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
 
 # ─── MENU ────────────────────────────────────────────────────────
 @app.route("/api/menu/<int:restaurant_id>")
@@ -132,6 +153,8 @@ def add_menu_item():
 @login_required
 def delete_menu_item(item_id):
     try:
+        # Remove from carts first to avoid FK violation (CARTS.item_id → MENU_ITEMS)
+        db.execute_query("DELETE FROM CARTS WHERE item_id = :id", {"id": item_id}, fetch=False)
         db.call_procedure("pr_Delete_Menu_Item", [item_id])
         return jsonify({"ok": True})
     except Exception as e:
@@ -354,33 +377,32 @@ def get_agents():
     return jsonify(rows or [])
 
 # ─── STATS (role-aware) ───────────────────────────────────────────
+def _safe_scalar(query, params=None, key="C", default=0):
+    """Run a single-row scalar query; return default if anything fails."""
+    try:
+        result = db.execute_query(query, params)
+        return result[0][key] if result else default
+    except Exception:
+        return default
+
 @app.route("/api/stats")
 @login_required
 def get_stats():
     user = session["user"]
     if user.get("role") == "admin":
-        total_orders   = db.execute_query("SELECT COUNT(*) AS C FROM ORDERS")[0]["C"]
-        total_revenue  = float(db.execute_query("SELECT NVL(SUM(total_amount),0) AS S FROM ORDERS")[0]["S"])
-        total_customers= db.execute_query("SELECT COUNT(*) AS C FROM CUSTOMERS")[0]["C"]
-        pending_orders = db.execute_query("SELECT COUNT(*) AS C FROM ORDERS WHERE order_status IN ('PENDING','ORDER_RECEIVED')")[0]["C"]
         return jsonify({
-            "total_orders": total_orders,
-            "total_revenue": total_revenue,
-            "total_customers": total_customers,
-            "pending_orders": pending_orders
+            "total_orders":    _safe_scalar("SELECT COUNT(*) AS C FROM ORDERS"),
+            "total_revenue":   float(_safe_scalar("SELECT NVL(SUM(total_amount),0) AS C FROM ORDERS")),
+            "total_customers": _safe_scalar("SELECT COUNT(*) AS C FROM CUSTOMERS"),
+            "pending_orders":  _safe_scalar("SELECT COUNT(*) AS C FROM ORDERS WHERE order_status IN ('PENDING','ORDER_RECEIVED')")
         })
     else:
         cid = user["CUSTOMER_ID"]
-        my_orders   = db.execute_query("SELECT COUNT(*) AS C FROM ORDERS WHERE customer_id=:c", {"c": cid})[0]["C"]
-        my_spending = float(db.execute_query("SELECT NVL(SUM(total_amount),0) AS S FROM ORDERS WHERE customer_id=:c", {"c": cid})[0]["S"])
-        active      = db.execute_query("SELECT COUNT(*) AS C FROM ORDERS WHERE customer_id=:c AND order_status NOT IN ('DELIVERED','CANCELLED')", {"c": cid})[0]["C"]
-        cart_items  = db.execute_query("SELECT NVL(SUM(quantity),0) AS C FROM CARTS WHERE customer_id=:c", {"c": cid})[0]["C"]
         return jsonify({
-            "total_orders": my_orders,
-            "total_revenue": my_spending,
-            "total_customers": active,      # repurposed field
-            "pending_orders": cart_items,   # repurposed field
-            # extra metadata so frontend knows which labels to show
+            "total_orders":   _safe_scalar("SELECT COUNT(*) AS C FROM ORDERS WHERE customer_id=:c", {"c": cid}),
+            "total_revenue":  float(_safe_scalar("SELECT NVL(SUM(total_amount),0) AS C FROM ORDERS WHERE customer_id=:c", {"c": cid})),
+            "total_customers": _safe_scalar("SELECT COUNT(*) AS C FROM ORDERS WHERE customer_id=:c AND order_status NOT IN ('DELIVERED','CANCELLED')", {"c": cid}),
+            "pending_orders": _safe_scalar("SELECT NVL(SUM(quantity),0) AS C FROM CARTS WHERE customer_id=:c", {"c": cid}),
             "_is_customer": True
         })
 

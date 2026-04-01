@@ -45,9 +45,18 @@ class DatabaseManager:
             return False
 
     def _ensure_connection(self):
-        if not self.connection:
-            if not self.connect():
-                raise ConnectionError("Cannot connect to Oracle Database. Check DB_USER/DB_PASSWORD/DB_DSN in .env")
+        if self.connection:
+            try:
+                # Ping the connection — raises if the socket is dead
+                self.connection.ping()
+                return
+            except Exception:
+                self.connection = None  # force reconnect
+        if not self.connect():
+            raise ConnectionError(
+                "Cannot connect to Oracle Database. "
+                "Check DB_USER/DB_PASSWORD/DB_DSN in .env and ensure Docker is running."
+            )
 
     # ── Generic Queries ──────────────────────────────────────────
     def execute_query(self, query, params=None, fetch=True):
