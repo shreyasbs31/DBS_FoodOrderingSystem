@@ -267,18 +267,29 @@ def process_payment():
     d = request.json
     order_id = d["order_id"]
     method = d["method"]
-    # COD: payment stays PENDING, order goes to ORDER_RECEIVED
+
     if method == "CASH":
         try:
+            # Clean up any previous failed payment attempt for this order
+            db.execute_query(
+                "DELETE FROM PAYMENTS WHERE order_id=:oid AND payment_status='PENDING'",
+                {"oid": order_id}, fetch=False)
+            # Update status first — if this fails, nothing else is committed
+            db.call_procedure("pr_Update_Order_Status", [order_id, "ORDER_RECEIVED"])
+            # Only insert payment record after status update succeeds
             db.execute_query(
                 "INSERT INTO PAYMENTS (order_id, payment_method, payment_status) VALUES (:oid, :m, 'PENDING')",
                 {"oid": order_id, "m": method}, fetch=False)
-            db.call_procedure("pr_Update_Order_Status", [order_id, "ORDER_RECEIVED"])
             return jsonify({"ok": True, "message": "Order received! Pay on delivery."})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 400
     else:
         try:
+            # For UPI / Card — use the full stored procedure
+            # Clean up any PENDING (failed COD attempt) before processing
+            db.execute_query(
+                "DELETE FROM PAYMENTS WHERE order_id=:oid AND payment_status='PENDING'",
+                {"oid": order_id}, fetch=False)
             db.call_procedure("pr_Process_Payment", [order_id, method])
             return jsonify({"ok": True, "message": "Payment confirmed!"})
         except Exception as e:
