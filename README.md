@@ -38,6 +38,7 @@ DB_USER=system
 DB_PASSWORD=Shreyas123
 DB_DSN=localhost:1521/XE
 FLASK_SECRET_KEY=foodos-super-secret-key-change-me
+PORT=5001
 ```
 
 ### 5. Load the database schema & data
@@ -59,7 +60,7 @@ EXIT;
 ```bash
 python3.13 frontend/server.py
 ```
-Open **http://127.0.0.1:5000** in your browser.
+Open **http://127.0.0.1:5001** in your browser (or your configured `PORT`).
 
 ---
 
@@ -180,7 +181,8 @@ docker start oracle-db
 cd /path/to/DBS_FoodOrderingSystem
 python3.13 frontend/server.py
 ```
-Open **http://127.0.0.1:5000**
+Open **http://127.0.0.1:5001**
+If needed, set a different `PORT` in `.env`.
 
 ---
 

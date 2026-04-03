@@ -44,6 +44,15 @@ class DatabaseManager:
             print(f"[DB] Connection Error: {e}")
             return False
 
+    def close(self):
+        """Close database connection."""
+        if self.connection:
+            try:
+                self.connection.close()
+                self.connection = None
+            except Exception as e:
+                print(f"[DB] Error closing connection: {e}")
+
     def _ensure_connection(self):
         if self.connection:
             try:
@@ -70,10 +79,14 @@ class DatabaseManager:
                 return [dict(zip(columns, row)) for row in cursor.fetchall()]
             self.connection.commit()
             return True
+        except oracledb.DatabaseError as e:
+            print(f"[DB] Database Error: {e}")
+            self.connection.rollback()
+            raise e
         except oracledb.Error as e:
             print(f"[DB] Query Error: {e}")
             self.connection.rollback()
-            return None
+            raise e
         finally:
             cursor.close()
 
@@ -92,7 +105,7 @@ class DatabaseManager:
         finally:
             cursor.close()
 
-    def call_procedure_with_out(self, proc_name, in_params, out_type=float):
+    def call_procedure_with_out(self, proc_name, in_params, out_type=int):
         """Call a procedure that has one trailing OUT NUMBER parameter."""
         self._ensure_connection()
         cursor = self.connection.cursor()

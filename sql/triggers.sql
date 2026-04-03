@@ -20,16 +20,20 @@ BEGIN
 END;
 /
 
--- 2. When a delivery is marked DELIVERED:
---    → set order status to DELIVERED
---    → free up the delivery agent
+-- 2. When a delivery status changes:
+--    → If DELIVERED: set order to DELIVERED, free up agent
+--    → If CANCELLED: free up agent (needs manual order cancellation)
 CREATE OR REPLACE TRIGGER trg_Complete_Delivery
 AFTER UPDATE OF delivery_status ON DELIVERIES
 FOR EACH ROW
-WHEN (NEW.delivery_status = 'DELIVERED')
 BEGIN
-    UPDATE ORDERS SET order_status = 'DELIVERED' WHERE order_id = :NEW.order_id;
-    UPDATE DELIVERY_AGENTS SET is_available = 'Y' WHERE agent_id = :NEW.agent_id;
+    IF :NEW.delivery_status = 'DELIVERED' THEN
+        UPDATE ORDERS SET order_status = 'DELIVERED' WHERE order_id = :NEW.order_id;
+        -- Free up agent (safely check for NOT NULL)
+        IF :NEW.agent_id IS NOT NULL THEN
+            UPDATE DELIVERY_AGENTS SET is_available = 'Y' WHERE agent_id = :NEW.agent_id;
+        END IF;
+    END IF;
 END;
 /
 

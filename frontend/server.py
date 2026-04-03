@@ -17,6 +17,15 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "foodos-dev-secret")
 
+
+def get_server_port(default=5000):
+    """Read server port from env and safely fall back if invalid."""
+    raw_port = os.environ.get("PORT", str(default)).strip()
+    try:
+        return int(raw_port)
+    except ValueError:
+        return default
+
 # ─── Auth Helpers ────────────────────────────────────────────────
 def login_required(f):
     @wraps(f)
@@ -104,25 +113,7 @@ def add_restaurant():
 @login_required
 def delete_restaurant(rid):
     try:
-        # Must delete in FK dependency order to avoid ORA-02292
-        db.execute_query("""
-            DELETE FROM REVIEWS WHERE order_id IN
-                (SELECT order_id FROM ORDERS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
-        db.execute_query("""
-            DELETE FROM DELIVERIES WHERE order_id IN
-                (SELECT order_id FROM ORDERS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
-        db.execute_query("""
-            DELETE FROM PAYMENTS WHERE order_id IN
-                (SELECT order_id FROM ORDERS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
-        db.execute_query("""
-            DELETE FROM ORDER_DETAILS WHERE order_id IN
-                (SELECT order_id FROM ORDERS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
-        db.execute_query("DELETE FROM ORDERS WHERE restaurant_id = :rid", {"rid": rid}, fetch=False)
-        db.execute_query("""
-            DELETE FROM CARTS WHERE item_id IN
-                (SELECT item_id FROM MENU_ITEMS WHERE restaurant_id = :rid)""", {"rid": rid}, fetch=False)
-        db.execute_query("DELETE FROM MENU_ITEMS WHERE restaurant_id = :rid", {"rid": rid}, fetch=False)
-        db.execute_query("DELETE FROM RESTAURANTS WHERE restaurant_id = :rid", {"rid": rid}, fetch=False)
+        db.call_procedure("pr_Delete_Restaurant", [rid])
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -170,7 +161,7 @@ def get_categories():
 @app.route("/api/cart")
 @login_required
 def get_cart():
-    cid = session["user"]["CUSTOMER_ID"]
+    cid = session["user"].get("customer_id") or session["user"].get("CUSTOMER_ID")
     rows = db.execute_query("""
         SELECT c.item_id, m.item_name, c.quantity, m.price,
                (c.quantity * m.price) AS subtotal, m.restaurant_id, r.name AS restaurant_name
@@ -184,26 +175,54 @@ def get_cart():
 @app.route("/api/cart", methods=["POST"])
 @login_required
 def add_to_cart():
-    cid = session["user"]["CUSTOMER_ID"]
+    cid = session["user"].get("customer_id") or session["user"].get("CUSTOMER_ID")
     item_id = request.json["item_id"]
-    existing = db.execute_query(
-        "SELECT quantity FROM CARTS WHERE customer_id = :c AND item_id = :i",
-        {"c": cid, "i": item_id}
-    )
-    if existing:
-        db.execute_query(
-            "UPDATE CARTS SET quantity = quantity + 1 WHERE customer_id = :c AND item_id = :i",
-            {"c": cid, "i": item_id}, fetch=False)
-    else:
-        db.execute_query(
-            "INSERT INTO CARTS (customer_id, item_id, quantity) VALUES (:c, :i, 1)",
-            {"c": cid, "i": item_id}, fetch=False)
-    return jsonify({"ok": True})
+
+    try:
+        # Verify item exists
+        item = db.execute_query("SELECT restaurant_id FROM MENU_ITEMS WHERE item_id = :i", {"i": item_id})
+        if not item:
+            return jsonify({"ok": False, "error": "Item not found"}), 404
+
+        item_restaurant_id = item[0].get("RESTAURANT_ID") or item[0].get("restaurant_id")
+
+        # Check if cart already has items from different restaurant
+        cart_items = db.execute_query("""
+            SELECT DISTINCT m.restaurant_id
+            FROM CARTS c
+            JOIN MENU_ITEMS m ON c.item_id = m.item_id
+            WHERE c.customer_id = :c
+        """, {"c": cid})
+
+        if cart_items:
+            existing_restaurant = cart_items[0].get("RESTAURANT_ID") or cart_items[0].get("restaurant_id")
+            if existing_restaurant != item_restaurant_id:
+                return jsonify({
+                    "ok": False,
+                    "error": "Cannot add items from different restaurants. Please clear your cart first."
+                }), 400
+
+        # Check if item already in cart
+        existing = db.execute_query(
+            "SELECT quantity FROM CARTS WHERE customer_id = :c AND item_id = :i",
+            {"c": cid, "i": item_id}
+        )
+        if existing:
+            db.execute_query(
+                "UPDATE CARTS SET quantity = quantity + 1 WHERE customer_id = :c AND item_id = :i",
+                {"c": cid, "i": item_id}, fetch=False)
+        else:
+            db.execute_query(
+                "INSERT INTO CARTS (customer_id, item_id, quantity) VALUES (:c, :i, 1)",
+                {"c": cid, "i": item_id}, fetch=False)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
 
 @app.route("/api/cart/<int:item_id>", methods=["DELETE"])
 @login_required
 def remove_from_cart(item_id):
-    cid = session["user"]["CUSTOMER_ID"]
+    cid = session["user"].get("customer_id") or session["user"].get("CUSTOMER_ID")
     db.execute_query("DELETE FROM CARTS WHERE customer_id = :c AND item_id = :i",
                      {"c": cid, "i": item_id}, fetch=False)
     return jsonify({"ok": True})
@@ -211,7 +230,7 @@ def remove_from_cart(item_id):
 @app.route("/api/cart/clear", methods=["DELETE"])
 @login_required
 def clear_cart():
-    cid = session["user"]["CUSTOMER_ID"]
+    cid = session["user"].get("customer_id") or session["user"].get("CUSTOMER_ID")
     db.execute_query("DELETE FROM CARTS WHERE customer_id = :c", {"c": cid}, fetch=False)
     return jsonify({"ok": True})
 
@@ -236,7 +255,7 @@ def get_orders():
             FROM ORDERS o
             JOIN RESTAURANTS r ON o.restaurant_id = r.restaurant_id
             WHERE o.customer_id = :cid ORDER BY o.order_time DESC
-        """, {"cid": user["CUSTOMER_ID"]})
+        """, {"cid": user.get("customer_id") or user.get("CUSTOMER_ID")})
     for r in (rows or []):
         if r.get("ORDER_TIME"):
             r["ORDER_TIME"] = r["ORDER_TIME"].strftime("%d %b %Y, %H:%M")
@@ -265,11 +284,16 @@ def get_order_details(order_id):
 @app.route("/api/orders", methods=["POST"])
 @login_required
 def place_order():
-    cid = session["user"]["CUSTOMER_ID"]
+    cid = session["user"].get("customer_id") or session["user"].get("CUSTOMER_ID")
     rid = request.json["restaurant_id"]
     try:
-        order_id = db.call_procedure_with_out("pr_Place_Order", [cid, rid])
-        return jsonify({"ok": True, "order_id": int(order_id) if order_id else None})
+        # Verify restaurant exists
+        restaurant = db.execute_query("SELECT restaurant_id FROM RESTAURANTS WHERE restaurant_id = :r", {"r": rid})
+        if not restaurant:
+            return jsonify({"ok": False, "error": "Restaurant not found"}), 404
+
+        order_id = db.call_procedure_with_out("pr_Place_Order", [cid, rid], out_type=int)
+        return jsonify({"ok": True, "order_id": order_id})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
@@ -293,26 +317,18 @@ def process_payment():
 
     if method == "CASH":
         try:
-            # Clean up any previous failed payment attempt for this order
-            db.execute_query(
-                "DELETE FROM PAYMENTS WHERE order_id=:oid AND payment_status='PENDING'",
-                {"oid": order_id}, fetch=False)
-            # Update status first — if this fails, nothing else is committed
-            db.call_procedure("pr_Update_Order_Status", [order_id, "ORDER_RECEIVED"])
-            # Only insert payment record after status update succeeds
+            # For COD: mark payment as PENDING (payment on delivery)
             db.execute_query(
                 "INSERT INTO PAYMENTS (order_id, payment_method, payment_status) VALUES (:oid, :m, 'PENDING')",
                 {"oid": order_id, "m": method}, fetch=False)
+            # Update order status to ORDER_RECEIVED
+            db.call_procedure("pr_Update_Order_Status", [order_id, "ORDER_RECEIVED"])
             return jsonify({"ok": True, "message": "Order received! Pay on delivery."})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 400
     else:
         try:
-            # For UPI / Card — use the full stored procedure
-            # Clean up any PENDING (failed COD attempt) before processing
-            db.execute_query(
-                "DELETE FROM PAYMENTS WHERE order_id=:oid AND payment_status='PENDING'",
-                {"oid": order_id}, fetch=False)
+            # For UPI/Card: payment processed immediately (status = COMPLETED)
             db.call_procedure("pr_Process_Payment", [order_id, method])
             return jsonify({"ok": True, "message": "Payment confirmed!"})
         except Exception as e:
@@ -340,7 +356,7 @@ def get_deliveries():
                d.assignment_time, d.completion_time,
                a.agent_name, a.phone AS agent_phone
         FROM DELIVERIES d
-        JOIN DELIVERY_AGENTS a ON d.agent_id = a.agent_id
+        LEFT JOIN DELIVERY_AGENTS a ON d.agent_id = a.agent_id
         ORDER BY d.assignment_time DESC
     """)
     for r in (rows or []):
@@ -378,12 +394,21 @@ def get_agents():
 
 # ─── STATS (role-aware) ───────────────────────────────────────────
 def _safe_scalar(query, params=None, key="C", default=0):
-    """Run a single-row scalar query; return default if anything fails."""
+    """Run a single-row scalar query; return default if result empty, raise on DB error."""
     try:
         result = db.execute_query(query, params)
-        return result[0][key] if result else default
-    except Exception:
+        if result and len(result) > 0:
+            row = result[0]
+            # Case-insensitive key lookup
+            value = row.get(key) or row.get(key.lower())
+            return value if value is not None else default
         return default
+    except KeyError as e:
+        print(f"[STATS] Key error in query: {e} for key '{key}'")
+        raise
+    except Exception as e:
+        print(f"[STATS] Query failed: {e}")
+        raise
 
 @app.route("/api/stats")
 @login_required
@@ -397,13 +422,12 @@ def get_stats():
             "pending_orders":  _safe_scalar("SELECT COUNT(*) AS C FROM ORDERS WHERE order_status IN ('PENDING','ORDER_RECEIVED')")
         })
     else:
-        cid = user["CUSTOMER_ID"]
+        cid = user.get("customer_id") or user.get("CUSTOMER_ID")
         return jsonify({
             "total_orders":   _safe_scalar("SELECT COUNT(*) AS C FROM ORDERS WHERE customer_id=:c", {"c": cid}),
             "total_revenue":  float(_safe_scalar("SELECT NVL(SUM(total_amount),0) AS C FROM ORDERS WHERE customer_id=:c", {"c": cid})),
-            "total_customers": _safe_scalar("SELECT COUNT(*) AS C FROM ORDERS WHERE customer_id=:c AND order_status NOT IN ('DELIVERED','CANCELLED')", {"c": cid}),
+            "total_customers": _safe_scalar("SELECT COUNT(*) AS C FROM ORDERS WHERE customer_id=:c AND order_status IN ('PENDING', 'ORDER_RECEIVED', 'CONFIRMED')", {"c": cid}),
             "pending_orders": _safe_scalar("SELECT NVL(SUM(quantity),0) AS C FROM CARTS WHERE customer_id=:c", {"c": cid}),
-            "_is_customer": True
         })
 
 # ─── REVIEWS ─────────────────────────────────────────────────────
@@ -411,7 +435,7 @@ def get_stats():
 @login_required
 def add_review():
     d = request.json
-    cid = session["user"]["CUSTOMER_ID"]
+    cid = session["user"].get("customer_id") or session["user"].get("CUSTOMER_ID")
     db.execute_query(
         "INSERT INTO REVIEWS (order_id, customer_id, rating, comments) VALUES (:oid, :cid, :r, :c)",
         {"oid": d["order_id"], "cid": cid, "r": d["rating"], "c": d.get("comments", "")},
@@ -421,5 +445,6 @@ def add_review():
 
 # ─── RUN ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("\n  🍔  FoodOS starting — open http://127.0.0.1:5000 in your browser\n")
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    port = get_server_port(5000)
+    print(f"\n  🍔  FoodOS starting — open http://127.0.0.1:{port} in your browser\n")
+    app.run(debug=True, host="0.0.0.0", port=port)
