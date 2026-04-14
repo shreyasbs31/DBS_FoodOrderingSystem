@@ -142,7 +142,11 @@
             <div id="view-restaurants" class="view">
                 <div class="flex items-center justify-between mb-6">
                     <h3 class="df text-xs tracking-widest font-bold">Restaurants</h3>
-                    <button id="btnAddRestaurant" class="hidden btn-accent df text-[9px] tracking-widest px-5 py-2.5 sa" onclick="showAddRestaurantModal()">+ Add Restaurant</button>
+                    <div class="flex items-center gap-3">
+                        <input id="searchRestaurant" type="text" placeholder="Search by name or location..." class="bg-white/5 border-2 border-white/10 px-4 py-2 text-sm focus:border-[#d9ff00] transition-colors w-64" oninput="debounceSearchRestaurant()">
+                        <button id="btnToggleArchiveRes" class="hidden bb bg-transparent text-white/50 df text-[9px] tracking-widest px-4 py-2.5 hover:text-white transition-colors" onclick="toggleArchiveRes()">Show Deleted</button>
+                        <button id="btnAddRestaurant" class="hidden btn-accent df text-[9px] tracking-widest px-5 py-2.5 sa" onclick="showAddRestaurantModal()">+ Add Restaurant</button>
+                    </div>
                 </div>
                 <div id="restaurantGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
             </div>
@@ -152,6 +156,7 @@
                 <div class="flex items-center justify-between mb-6">
                     <h3 class="df text-xs tracking-widest font-bold">Menu — <span id="menuResName" class="text-[#d9ff00]"></span></h3>
                     <div class="flex gap-3">
+                        <button id="btnToggleMenuArchive" class="hidden bb bg-transparent text-white/50 df text-[9px] tracking-widest px-4 py-2 hover:text-white transition-colors" onclick="toggleArchiveMenu()">Show Deleted</button>
                         <button onclick="navigate('restaurants')" class="bb bg-transparent text-white df text-[9px] tracking-widest px-4 py-2 hover:bg-white hover:text-black transition-colors">← Back</button>
                         <button id="btnAddMenuItem" class="hidden btn-accent df text-[9px] tracking-widest px-4 py-2 sa" onclick="showAddMenuItemModal()">+ Add Item</button>
                     </div>
@@ -167,7 +172,12 @@
 
             <!-- ORDERS VIEW -->
             <div id="view-orders" class="view">
-                <h3 class="df text-xs tracking-widest font-bold mb-6">Order History</h3>
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="df text-xs tracking-widest font-bold">Order History</h3>
+                    <div class="flex items-center gap-3">
+                        <input id="searchOrder" type="text" placeholder="Search Order ID..." class="bg-white/5 border-2 border-white/10 px-4 py-2 text-sm focus:border-[#d9ff00] transition-colors rounded-none outline-none text-white w-64 hidden" oninput="debounceSearchOrder()">
+                    </div>
+                </div>
                 <div id="ordersTable"></div>
             </div>
 
@@ -199,6 +209,8 @@ let currentUser = null;
 let currentView = 'dashboard';
 let selectedRestaurantId = null;
 let currentLoginRole = 'customer';
+let showingArchiveRes = false;
+let showingArchiveMenu = false;
 
 // ═══════════════════════════════════════
 // UTILITIES
@@ -361,6 +373,8 @@ function navigate(view) {
     const isAdmin = currentUser.role === 'admin';
     document.getElementById('btnAddRestaurant')?.classList.toggle('hidden', !isAdmin);
     document.getElementById('btnAddMenuItem')?.classList.toggle('hidden', !isAdmin);
+    document.getElementById('btnToggleArchiveRes')?.classList.toggle('hidden', !isAdmin);
+    document.getElementById('btnToggleMenuArchive')?.classList.toggle('hidden', !isAdmin);
 
     if (view === 'dashboard')   loadDashboard();
     else if (view === 'restaurants') loadRestaurants();
@@ -471,18 +485,39 @@ async function showOrderModal(orderId) {
 // ═══════════════════════════════════════
 // RESTAURANTS
 // ═══════════════════════════════════════
+let searchTimeout = null;
+function debounceSearchRestaurant() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        loadRestaurants();
+    }, 300);
+}
+
+function toggleArchiveRes() {
+    showingArchiveRes = !showingArchiveRes;
+    document.getElementById('btnToggleArchiveRes').textContent = showingArchiveRes ? 'Hide Deleted' : 'Show Deleted';
+    document.getElementById('btnToggleArchiveRes').classList.toggle('text-[#d9ff00]', showingArchiveRes);
+    loadRestaurants();
+}
+
 async function loadRestaurants() {
-    const rows = await api('/api/restaurants');
+    const q = document.getElementById('searchRestaurant')?.value.trim() || '';
+    const url = q ? `/api/restaurants?q=${encodeURIComponent(q)}&archived=${showingArchiveRes?1:0}` : `/api/restaurants?archived=${showingArchiveRes?1:0}`;
+    const rows = await api(url);
     const isAdmin = currentUser.role === 'admin';
     document.getElementById('restaurantGrid').innerHTML = (rows||[]).length ? (rows||[]).map(r => `
-        <div class="bg-white/5 bb p-6 group hover:border-[#d9ff00] transition-all cursor-pointer relative" onclick="openMenu(${r.RESTAURANT_ID},'${r.NAME.replace(/'/g,"\\'")}')">
+        <div class="bg-white/5 bb p-6 group transition-all ${r.STATUS === 'DELETED' ? 'opacity-50 grayscale' : 'hover:border-[#d9ff00] cursor-pointer'} relative" ${r.STATUS === 'DELETED' ? '' : `onclick="openMenu(${r.RESTAURANT_ID},'${r.NAME.replace(/'/g,"\\\\'")}')"`}>
             <div class="absolute top-4 right-4 bg-[#d9ff00]/10 text-[#d9ff00] px-2 py-0.5 text-[9px] df font-bold">★ ${r.RATING}</div>
-            <iconify-icon icon="lucide:utensils" class="text-2xl text-white/20 group-hover:text-[#d9ff00] transition-colors mb-3"></iconify-icon>
-            <h4 class="df text-xs font-bold tracking-wide mb-1">${r.NAME}</h4>
+            <iconify-icon icon="lucide:utensils" class="text-2xl text-white/20 ${r.STATUS !== 'DELETED' ? 'group-hover:text-[#d9ff00]' : ''} transition-colors mb-3"></iconify-icon>
+            <h4 class="df text-xs font-bold tracking-wide mb-1">${r.NAME} ${r.STATUS === 'DELETED' ? '(DELETED)' : ''}</h4>
             <p class="text-xs text-white/40 mb-4">${r.LOCATION}</p>
             <div class="flex gap-2">
-                <span class="text-[9px] df text-white/30 border border-white/10 px-2 py-0.5">View Menu →</span>
-                ${isAdmin ? `<button onclick="event.stopPropagation();deleteRestaurant(${r.RESTAURANT_ID})" class="text-[9px] df text-red-400 hover:text-red-300 border border-red-400/20 px-2 py-0.5">Delete</button>` : ''}
+                ${r.STATUS !== 'DELETED' ? `<span class="text-[9px] df text-white/30 border border-white/10 px-2 py-0.5">View Menu →</span>` : ''}
+                ${isAdmin ? (
+                    r.STATUS === 'DELETED' ?
+                    `<button onclick="event.stopPropagation();restoreRestaurant(${r.RESTAURANT_ID})" class="text-[9px] df text-green-400 hover:text-green-300 border border-green-400/20 px-2 py-0.5 z-10 relative">Restore</button>` :
+                    `<button onclick="event.stopPropagation();deleteRestaurant(${r.RESTAURANT_ID})" class="text-[9px] df text-red-400 hover:text-red-300 border border-red-400/20 px-2 py-0.5 z-10 relative">Delete</button>`
+                ) : ''}
             </div>
         </div>
     `).join('') : '<p class="text-white/30">No restaurants found.</p>';
@@ -509,9 +544,14 @@ async function submitAddRestaurant() {
 }
 
 async function deleteRestaurant(id) {
-    if (!confirm('Delete this restaurant? All its menu items will also be removed.')) return;
+    if (!confirm('Trash this restaurant? All its menu items will also be hidden.')) return;
     await api(`/api/restaurants/${id}`, { method: 'DELETE' });
-    toast('Restaurant deleted'); loadRestaurants();
+    toast('Restaurant deleted (Trashed)'); loadRestaurants();
+}
+
+async function restoreRestaurant(id) {
+    await api(`/api/restaurants/${id}/restore`, { method: 'PUT' });
+    toast('Restaurant restored!'); loadRestaurants();
 }
 
 // ═══════════════════════════════════════
@@ -524,17 +564,28 @@ async function openMenu(rid, rname) {
     loadMenu();
 }
 
+function toggleArchiveMenu() {
+    showingArchiveMenu = !showingArchiveMenu;
+    document.getElementById('btnToggleMenuArchive').textContent = showingArchiveMenu ? 'Hide Deleted' : 'Show Deleted';
+    document.getElementById('btnToggleMenuArchive').classList.toggle('text-[#d9ff00]', showingArchiveMenu);
+    loadMenu();
+}
+
 async function loadMenu() {
-    const rows = await api(`/api/menu/${selectedRestaurantId}`);
+    const rows = await api(`/api/menu/${selectedRestaurantId}?archived=${showingArchiveMenu?1:0}`);
     const isAdmin = currentUser.role === 'admin';
     document.getElementById('menuGrid').innerHTML = (rows||[]).length ? (rows||[]).map(item => `
-        <div class="bg-white/5 bb p-5 group hover:border-[#d9ff00] transition-all">
+        <div class="bg-white/5 bb p-5 group transition-all ${item.STATUS === 'DELETED' ? 'opacity-50 grayscale' : 'hover:border-[#d9ff00]'}">
             <span class="text-[9px] df tracking-widest text-[#d9ff00]/60">${item.CATEGORY_NAME}</span>
-            <h4 class="text-sm font-bold mt-1 mb-3">${item.ITEM_NAME}</h4>
+            <h4 class="text-sm font-bold mt-1 mb-3">${item.ITEM_NAME} ${item.STATUS === 'DELETED' ? '(DELETED)' : ''}</h4>
             <p class="text-xl font-black text-[#d9ff00] mb-4">${fmt(item.PRICE)}</p>
             <div class="flex gap-2">
-                ${!isAdmin ? `<button onclick="addToCart(${item.ITEM_ID})" class="btn-accent df text-[9px] tracking-widest px-4 py-1.5 sa flex-1">+ Add to Cart</button>` : ''}
-                ${isAdmin ? `<button onclick="deleteMenuItem(${item.ITEM_ID})" class="text-[9px] df tracking-widest text-red-400 hover:text-red-300 px-4 py-1.5 border border-red-400/20 w-full">Delete Item</button>` : ''}
+                ${!isAdmin && item.STATUS !== 'DELETED' ? `<button onclick="addToCart(${item.ITEM_ID})" class="btn-accent df text-[9px] tracking-widest px-4 py-1.5 sa flex-1">+ Add to Cart</button>` : ''}
+                ${isAdmin ? (
+                    item.STATUS === 'DELETED' ? 
+                    `<button onclick="restoreMenuItem(${item.ITEM_ID})" class="text-[9px] df tracking-widest text-green-400 hover:text-green-300 px-4 py-1.5 border border-green-400/20 w-full">Restore Item</button>` :
+                    `<button onclick="deleteMenuItem(${item.ITEM_ID})" class="text-[9px] df tracking-widest text-red-400 hover:text-red-300 px-4 py-1.5 border border-red-400/20 w-full">Trash Item</button>`
+                ) : ''}
             </div>
         </div>
     `).join('') : '<p class="text-white/30 col-span-3">No items on this menu yet.</p>';
@@ -564,9 +615,14 @@ async function submitAddMenuItem() {
 }
 
 async function deleteMenuItem(id) {
-    if (!confirm('Delete this menu item?')) return;
+    if (!confirm('Trash this menu item?')) return;
     await api(`/api/menu/${id}`, { method: 'DELETE' });
-    toast('Item deleted'); loadMenu();
+    toast('Item deleted (Trashed)'); loadMenu();
+}
+
+async function restoreMenuItem(id) {
+    await api(`/api/menu/${id}/restore`, { method: 'PUT' });
+    toast('Item restored!'); loadMenu();
 }
 
 // ═══════════════════════════════════════
@@ -675,9 +731,26 @@ async function submitPayment(orderId) {
 // ═══════════════════════════════════════
 // ORDERS
 // ═══════════════════════════════════════
+let orderSearchTimeout = null;
+function debounceSearchOrder() {
+    clearTimeout(orderSearchTimeout);
+    orderSearchTimeout = setTimeout(() => {
+        loadOrders();
+    }, 300);
+}
+
 async function loadOrders() {
-    const rows = await api('/api/orders');
     const isAdmin = currentUser.role === 'admin';
+    const q = document.getElementById('searchOrder')?.value.trim() || '';
+    const url = q ? `/api/orders?q=${encodeURIComponent(q)}` : '/api/orders';
+    const rows = await api(url);
+    
+    // Show the search bar only if user is admin
+    const searchBar = document.getElementById('searchOrder');
+    if (searchBar) {
+        if (isAdmin) searchBar.classList.remove('hidden');
+        else searchBar.classList.add('hidden');
+    }
     document.getElementById('ordersTable').innerHTML = (rows && rows.length) ? `
         <div class="bg-white/5 bb overflow-hidden">
             <table class="text-left text-xs">
@@ -702,8 +775,8 @@ async function loadOrders() {
                         <td class="px-5 py-3"><button onclick="showOrderModal(${o.ORDER_ID})" class="text-[9px] df tracking-widest text-white/40 hover:text-[#d9ff00] border border-white/10 hover:border-[#d9ff00] px-3 py-1 transition-all">View</button></td>
                         ${isAdmin ? `<td class="px-5 py-3 space-x-2">
                             ${o.ORDER_STATUS === 'PENDING' ? `<button onclick="updateOrderStatus(${o.ORDER_ID},'CONFIRMED')" class="text-[9px] df text-blue-400 hover:underline">Confirm</button>` : ''}
-                            ${o.ORDER_STATUS === 'ORDER_RECEIVED' ? `<button onclick="updateOrderStatus(${o.ORDER_ID},'CONFIRMED')" class="text-[9px] df text-yellow-400 hover:underline">Confirm</button>` : ''}
-                            ${o.ORDER_STATUS === 'CONFIRMED' ? `<button onclick="assignDelivery(${o.ORDER_ID})" class="text-[9px] df text-purple-400 hover:underline">Assign Agent</button>` : ''}
+                            ${(o.ORDER_STATUS === 'CONFIRMED' || o.ORDER_STATUS === 'ORDER_RECEIVED') && !o.HAS_DELIVERY ? `<button onclick="assignDelivery(${o.ORDER_ID})" class="text-[9px] df text-purple-400 hover:underline">Assign Agent</button>` : ''}
+                            ${o.HAS_DELIVERY && o.ORDER_STATUS === 'CONFIRMED' ? `<span class="text-[8px] df text-white/30 italic">Agent Assigned</span>` : ''}
                             ${!['DELIVERED','CANCELLED','PENDING','ORDER_RECEIVED'].includes(o.ORDER_STATUS) ? '' : ''}
                         </td>` : ''}
                     </tr>

@@ -79,29 +79,49 @@ EXCEPTION
 END;
 /
 
--- 3. Assign Delivery Agent (picks first available agent with row-level locking to prevent race condition)
+-- 3. Assign Delivery Agent (picks first available agent atomically)
 CREATE OR REPLACE PROCEDURE pr_Assign_Delivery_Agent (
     p_order_id IN NUMBER
 ) AS
     v_agent_id NUMBER;
+    v_exists NUMBER;
 BEGIN
-    SELECT agent_id INTO v_agent_id
-    FROM DELIVERY_AGENTS
-    WHERE is_available = 'Y'
-    ORDER BY agent_id
-    FETCH FIRST 1 ROW ONLY
-    FOR UPDATE;
+    -- 1. Check if already assigned
+    SELECT COUNT(*) INTO v_exists FROM DELIVERIES WHERE order_id = p_order_id;
+    IF v_exists > 0 THEN
+        RAISE_APPLICATION_ERROR(-20013, 'Agent already assigned to this order');
+    END IF;
 
+    -- 2. Atomically pick an available agent and mark them busy
+    -- This avoids FOR UPDATE which triggers ORA-02014 in some environments.
+    UPDATE DELIVERY_AGENTS
+    SET is_available = 'N'
+    WHERE agent_id = (
+        SELECT MIN(agent_id)
+        FROM DELIVERY_AGENTS
+        WHERE is_available = 'Y'
+    )
+    RETURNING agent_id INTO v_agent_id;
+
+    -- 3. If no agent was updated, then none were available
+    IF v_agent_id IS NULL THEN
+        RAISE_APPLICATION_ERROR(-20002, 'No delivery agents available');
+    END IF;
+
+    -- 4. Create the delivery record
     INSERT INTO DELIVERIES (order_id, agent_id, delivery_status)
     VALUES (p_order_id, v_agent_id, 'ASSIGNED');
 
-    UPDATE DELIVERY_AGENTS SET is_available = 'N' WHERE agent_id = v_agent_id;
+    -- 5. Finalize the order status
     UPDATE ORDERS SET order_status = 'CONFIRMED' WHERE order_id = p_order_id;
 
     COMMIT;
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE_APPLICATION_ERROR(-20002, 'No delivery agents available');
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
 END;
 /
 
@@ -195,12 +215,23 @@ BEGIN
 END;
 /
 
--- 8. Delete a Menu Item (Admin)
+-- 8. Delete a Menu Item (Admin - Soft Delete)
 CREATE OR REPLACE PROCEDURE pr_Delete_Menu_Item (
     p_item_id IN NUMBER
 ) AS
 BEGIN
-    DELETE FROM MENU_ITEMS WHERE item_id = p_item_id;
+    UPDATE MENU_ITEMS SET status = 'DELETED' WHERE item_id = p_item_id;
+    DELETE FROM CARTS WHERE item_id = p_item_id;
+    COMMIT;
+END;
+/
+
+-- 8b. Restore a Menu Item (Admin)
+CREATE OR REPLACE PROCEDURE pr_Restore_Menu_Item (
+    p_item_id IN NUMBER
+) AS
+BEGIN
+    UPDATE MENU_ITEMS SET status = 'ACTIVE' WHERE item_id = p_item_id;
     COMMIT;
 END;
 /
@@ -243,33 +274,28 @@ BEGIN
 END;
 /
 
--- 10. Delete Restaurant with Cascading (atomic operation)
+-- 10. Delete Restaurant (Soft Delete)
 CREATE OR REPLACE PROCEDURE pr_Delete_Restaurant (
     p_restaurant_id IN NUMBER
 ) AS
 BEGIN
-    -- Delete in foreign key dependency order (reverse of creation)
-    DELETE FROM REVIEWS WHERE order_id IN
-        (SELECT order_id FROM ORDERS WHERE restaurant_id = p_restaurant_id);
-
-    DELETE FROM DELIVERIES WHERE order_id IN
-        (SELECT order_id FROM ORDERS WHERE restaurant_id = p_restaurant_id);
-
-    DELETE FROM PAYMENTS WHERE order_id IN
-        (SELECT order_id FROM ORDERS WHERE restaurant_id = p_restaurant_id);
-
-    DELETE FROM ORDER_DETAILS WHERE order_id IN
-        (SELECT order_id FROM ORDERS WHERE restaurant_id = p_restaurant_id);
-
-    DELETE FROM ORDERS WHERE restaurant_id = p_restaurant_id;
-
-    DELETE FROM CARTS WHERE item_id IN
+    UPDATE RESTAURANTS SET status = 'DELETED' WHERE restaurant_id = p_restaurant_id;
+    UPDATE MENU_ITEMS SET status = 'DELETED' WHERE restaurant_id = p_restaurant_id;
+    
+    DELETE FROM CARTS WHERE item_id IN 
         (SELECT item_id FROM MENU_ITEMS WHERE restaurant_id = p_restaurant_id);
 
-    DELETE FROM MENU_ITEMS WHERE restaurant_id = p_restaurant_id;
+    COMMIT;
+END;
+/
 
-    DELETE FROM RESTAURANTS WHERE restaurant_id = p_restaurant_id;
-
+-- 10b. Restore Restaurant
+CREATE OR REPLACE PROCEDURE pr_Restore_Restaurant (
+    p_restaurant_id IN NUMBER
+) AS
+BEGIN
+    UPDATE RESTAURANTS SET status = 'ACTIVE' WHERE restaurant_id = p_restaurant_id;
+    UPDATE MENU_ITEMS SET status = 'ACTIVE' WHERE restaurant_id = p_restaurant_id;
     COMMIT;
 END;
 /

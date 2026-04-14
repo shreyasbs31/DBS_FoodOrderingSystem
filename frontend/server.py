@@ -96,7 +96,20 @@ def get_session():
 @app.route("/api/restaurants")
 @login_required
 def get_restaurants():
-    rows = db.execute_query("SELECT * FROM RESTAURANTS ORDER BY restaurant_id")
+    q = request.args.get("q", "").strip()
+    archived = request.args.get("archived", "0")
+    status_filter = "status = 'DELETED'" if archived == "1" else "status = 'ACTIVE'"
+    
+    if q:
+        like_q = f"%{q}%"
+        rows = db.execute_query(f"""
+            SELECT * FROM RESTAURANTS 
+            WHERE (lower(name) LIKE lower(:q) OR lower(location) LIKE lower(:q))
+              AND {status_filter}
+            ORDER BY restaurant_id
+        """, {"q": like_q})
+    else:
+        rows = db.execute_query(f"SELECT * FROM RESTAURANTS WHERE {status_filter} ORDER BY restaurant_id")
     return jsonify(rows or [])
 
 @app.route("/api/restaurants", methods=["POST"])
@@ -118,14 +131,26 @@ def delete_restaurant(rid):
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
+@app.route("/api/restaurants/<int:rid>/restore", methods=["PUT"])
+@login_required
+def restore_restaurant(rid):
+    try:
+        db.call_procedure("pr_Restore_Restaurant", [rid])
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
 # ─── MENU ────────────────────────────────────────────────────────
 @app.route("/api/menu/<int:restaurant_id>")
 @login_required
 def get_menu(restaurant_id):
-    rows = db.execute_query("""
-        SELECT m.item_id, m.item_name, m.price, c.category_name, m.category_id
+    archived = request.args.get("archived", "0")
+    status_filter = "m.status = 'DELETED'" if archived == "1" else "m.status = 'ACTIVE'"
+    rows = db.execute_query(f"""
+        SELECT m.item_id, m.item_name, m.price, c.category_name, m.category_id, m.status
         FROM MENU_ITEMS m JOIN MENU_CATEGORIES c ON m.category_id = c.category_id
-        WHERE m.restaurant_id = :rid ORDER BY c.category_name, m.item_name
+        WHERE m.restaurant_id = :rid AND {status_filter}
+        ORDER BY c.category_name, m.item_name
     """, {"rid": restaurant_id})
     return jsonify(rows or [])
 
@@ -147,6 +172,15 @@ def delete_menu_item(item_id):
         # Remove from carts first to avoid FK violation (CARTS.item_id → MENU_ITEMS)
         db.execute_query("DELETE FROM CARTS WHERE item_id = :id", {"id": item_id}, fetch=False)
         db.call_procedure("pr_Delete_Menu_Item", [item_id])
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+@app.route("/api/menu/<int:item_id>/restore", methods=["PUT"])
+@login_required
+def restore_menu_item(item_id):
+    try:
+        db.call_procedure("pr_Restore_Menu_Item", [item_id])
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -239,23 +273,51 @@ def clear_cart():
 @login_required
 def get_orders():
     user = session["user"]
+    q = request.args.get("q", "").strip()
+    
     if user.get("role") == "admin":
-        rows = db.execute_query("""
-            SELECT o.order_id, o.order_status, o.total_amount, o.order_time,
-                   c.name AS customer_name, r.name AS restaurant_name
-            FROM ORDERS o
-            JOIN CUSTOMERS c ON o.customer_id = c.customer_id
-            JOIN RESTAURANTS r ON o.restaurant_id = r.restaurant_id
-            ORDER BY o.order_time DESC
-        """)
+        if q and q.isdigit():
+            rows = db.execute_query("""
+                SELECT o.order_id, o.order_status, o.total_amount, o.order_time,
+                       c.name AS customer_name, r.name AS restaurant_name,
+                       (SELECT COUNT(*) FROM DELIVERIES d WHERE d.order_id = o.order_id) as HAS_DELIVERY
+                FROM ORDERS o
+                JOIN CUSTOMERS c ON o.customer_id = c.customer_id
+                JOIN RESTAURANTS r ON o.restaurant_id = r.restaurant_id
+                WHERE o.order_id = :q
+                ORDER BY o.order_time DESC
+            """, {"q": int(q)})
+        else:
+            rows = db.execute_query("""
+                SELECT o.order_id, o.order_status, o.total_amount, o.order_time,
+                       c.name AS customer_name, r.name AS restaurant_name,
+                       (SELECT COUNT(*) FROM DELIVERIES d WHERE d.order_id = o.order_id) as HAS_DELIVERY
+                FROM ORDERS o
+                JOIN CUSTOMERS c ON o.customer_id = c.customer_id
+                JOIN RESTAURANTS r ON o.restaurant_id = r.restaurant_id
+                ORDER BY o.order_time DESC
+            """)
     else:
-        rows = db.execute_query("""
-            SELECT o.order_id, o.order_status, o.total_amount, o.order_time,
-                   r.name AS restaurant_name
-            FROM ORDERS o
-            JOIN RESTAURANTS r ON o.restaurant_id = r.restaurant_id
-            WHERE o.customer_id = :cid ORDER BY o.order_time DESC
-        """, {"cid": user.get("customer_id") or user.get("CUSTOMER_ID")})
+        cid = user.get("customer_id") or user.get("CUSTOMER_ID")
+        if q and q.isdigit():
+            rows = db.execute_query("""
+                SELECT o.order_id, o.order_status, o.total_amount, o.order_time,
+                       r.name AS restaurant_name,
+                       (SELECT COUNT(*) FROM DELIVERIES d WHERE d.order_id = o.order_id) as HAS_DELIVERY
+                FROM ORDERS o
+                JOIN RESTAURANTS r ON o.restaurant_id = r.restaurant_id
+                WHERE o.customer_id = :cid AND o.order_id = :q
+                ORDER BY o.order_time DESC
+            """, {"cid": cid, "q": int(q)})
+        else:
+            rows = db.execute_query("""
+                SELECT o.order_id, o.order_status, o.total_amount, o.order_time,
+                       r.name AS restaurant_name,
+                       (SELECT COUNT(*) FROM DELIVERIES d WHERE d.order_id = o.order_id) as HAS_DELIVERY
+                FROM ORDERS o
+                JOIN RESTAURANTS r ON o.restaurant_id = r.restaurant_id
+                WHERE o.customer_id = :cid ORDER BY o.order_time DESC
+            """, {"cid": cid})
     for r in (rows or []):
         if r.get("ORDER_TIME"):
             r["ORDER_TIME"] = r["ORDER_TIME"].strftime("%d %b %Y, %H:%M")
